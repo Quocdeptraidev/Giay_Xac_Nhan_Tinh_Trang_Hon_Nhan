@@ -612,7 +612,7 @@ def render_template_upload_section():
     </div>
     """, unsafe_allow_html=True)
     
-    # Trả về đường dẫn template tương đối cho Streamlit Cloud
+    # Trả về đường dẫn template cố định
     return "temp/mau.docx"
 
 def display_file_stats(valid_count, error_count):
