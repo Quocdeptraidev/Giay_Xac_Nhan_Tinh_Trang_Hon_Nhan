@@ -585,7 +585,7 @@ def render_template_upload_section():
     """, unsafe_allow_html=True)
     
     # Trả về đường dẫn template cố định
-    return "/Giay_Xac_Nhan_Tinh_Trang_Hon_Nhan/temp/mau.docx"
+    return "temp/mau.docx"
 
 def display_file_stats(valid_count, error_count):
     """Hiển thị thống kê file"""
