@@ -9,14 +9,23 @@ Version: 2.0 (Refactored)
 """
 
 import streamlit as st
+
+# Cấu hình Streamlit - PHẢI ĐẶT ĐẦU TIÊN
+st.set_page_config(
+    page_title="Tool Điền Giấy Xác Nhận Batch",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 from docx import Document
 from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import re
 import tempfile
 import os
 import zipfile
 from io import BytesIO
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # =============================================================================
 # CONSTANTS & CONFIGURATION
@@ -280,6 +289,16 @@ def extract_field_data(all_text, field_patterns):
     
     return data
 
+def sanitize_filename(filename):
+    """Làm sạch tên file để tránh lỗi"""
+    import string
+    # Loại bỏ ký tự đặc biệt, chỉ giữ chữ, số, dấu gạch ngang, gạch dưới, chấm
+    valid_chars = "-_. %s%s" % (string.ascii_letters, string.digits)
+    filename = ''.join(c for c in filename if c in valid_chars)
+    # Thay thế khoảng cách bằng gạch dưới
+    filename = re.sub(r'\s+', '_', filename)
+    return filename
+
 def extract_data_from_input(input_path):
     """
     Trích xuất dữ liệu từ file input
@@ -409,21 +428,21 @@ def fill_template(template_path, data, output_docx_path):
                         # Flexible string replacement for different dot formats
                         if 'Giới tính:' in cell_text and data.get('Giới tính'):
                             # Try multiple dot patterns
-                            patterns = ['Giới tính: ………………', 'Giới tính:………………', 'Giới tính: …………..', 'Giới tính:…………..']
+                            patterns = ['Giới tính: …………….', 'Giới tính:…………….']
                             for pattern in patterns:
                                 if pattern in cell_text:
                                     cell.text = cell_text.replace(pattern, f"Giới tính: {data['Giới tính']}")
                                     break
                         
                         if 'Dân tộc:' in cell.text and data.get('Dân tộc'):
-                            patterns = ['Dân tộc: ………………', 'Dân tộc:………………', 'Dân tộc: ……………...', 'Dân tộc:……………...']
+                            patterns = ['Dân tộc: …………….', 'Dân tộc:…………….']
                             for pattern in patterns:
                                 if pattern in cell.text:
                                     cell.text = cell.text.replace(pattern, f"Dân tộc: {data['Dân tộc']}")
                                     break
                         
                         if 'Quốc tịch:' in cell.text and data.get('Quốc tịch'):
-                            patterns = ['Quốc tịch: ………………', 'Quốc tịch:………………', 'Quốc tịch: ……………………', 'Quốc tịch:……………………']
+                            patterns = ['Quốc tịch: …………….', 'Quốc tịch:…………….']
                             for pattern in patterns:
                                 if pattern in cell.text:
                                     cell.text = cell.text.replace(pattern, f"Quốc tịch: {data['Quốc tịch']}")
@@ -452,19 +471,16 @@ def fill_template(template_path, data, output_docx_path):
                 for row in table.rows:
                     for cell in row.cells:
                         for paragraph in cell.paragraphs:
+                            # Căn phải cho ngày cấp
                             if 'Ngày, tháng, năm cấp:' in cell.text:
-                                        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-                                
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                            
                             for run in paragraph.runs:
                                 try:
                                     run.font.name = 'Times New Roman'
                                     run.font.size = Pt(13)
                                     if 'Họ, chữ đệm, tên, chức vụ người ký' in cell.text:
                                         run.font.bold = True
-                    
-                    # Căn phải cho ngày cấp
-                                    
                                 except:
                                     continue
         except:
@@ -553,21 +569,23 @@ def render_file_upload_section():
         "", 
         type="docx", 
         accept_multiple_files=True,
-        help="Kéo thả hoặc click để chọn file",
+        help="Kéo thả hoặc click để chọn file (tối đa 5MB mỗi file)",
         key="input_files"
     )
 
 def render_template_upload_section():
-    """Render section upload template"""
+    """Hiển thị thông tin template cố định"""
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
     <div class="upload-section">
-        <h3>📋 Bước 2: Upload File Template</h3>
-        <p>Chọn 1 file template dùng chung cho tất cả</p>
+        <h3>📋 Template Cố Định</h3>
+        <p>🎯 Tool sử dụng template được tối ưu hóa cho giấy xác nhận tình trạng hôn nhân</p>
+        <p>✅ Không cần upload template - đã được cài đặt sẵn</p>
     </div>
     """, unsafe_allow_html=True)
     
-    return st.file_uploader("", type="docx", help="File template (mau_giay.docx)", key="template_file")
+    # Trả về đường dẫn template cố định
+    return "/Giay_Xac_Nhan_Tinh_Trang_Hon_Nhan/temp/mau.docx"
 
 def display_file_stats(valid_count, error_count):
     """Hiển thị thống kê file"""
@@ -697,7 +715,8 @@ def main():
             status_text.text(f'Đang xử lý: {uploaded_file.name}')
             
             if uploaded_file.name.lower().endswith('.docx'):
-                input_path = os.path.join(TEMP_DIR, f"input_{i}_{uploaded_file.name}")
+                # Tạo tên file tạm thời đơn giản
+                input_path = os.path.join(TEMP_DIR, f"input_{i}.docx")
                 try:
                     with open(input_path, "wb") as f:
                         f.write(uploaded_file.getvalue())
@@ -741,18 +760,20 @@ def main():
     template_path = None
     
     if uploaded_template:
-        template_path = os.path.join(TEMP_DIR, "template.docx")
+        # uploaded_template bây giờ là đường dẫn string, không phải file object
+        template_path = uploaded_template
         try:
-            with open(template_path, "wb") as f:
-                f.write(uploaded_template.getvalue())
-            
-            test_doc = Document(template_path)
-            st.markdown("""
-            <div class="success-box">
-                <h4>✅ Template đã sẵn sàng</h4>
-                <p>File template đã được tải lên thành công</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Kiểm tra file template có tồn tại không
+            if os.path.exists(template_path):
+                test_doc = Document(template_path)
+                st.markdown("""
+                <div class="success-box">
+                    <h4>✅ Template đã sẵn sàng</h4>
+                    <p>Template cố định đã được tải thành công</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                raise FileNotFoundError(f"Template file không tồn tại: {template_path}")
         except Exception as e:
             st.markdown(f"""
             <div class="error-box">
@@ -801,6 +822,7 @@ def main():
             
             zip_buffer = BytesIO()
             used_names = {}
+            processed_files = []  # Tạo list để lưu file đã xử lý
             
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 success_count = 0
@@ -813,9 +835,10 @@ def main():
                         output_path = os.path.join(TEMP_DIR, f"output_{i}.docx")
                         
                         if fill_template(template_path, data, output_path):
-                            # Generate unique filename
-                            ho_ten = data.get('Họ tên', f'File_{data["file_index"]}').replace(' ', '_')
-                            base_name = f"{ho_ten}_GiayXacNhan"
+                            # Generate unique filename với sanitize
+                            ho_ten = data.get('Họ tên', f'File_{data["file_index"]}')
+                            ho_ten_clean = sanitize_filename(ho_ten)
+                            base_name = f"{ho_ten_clean}_GiayXacNhan"
                             
                             if base_name in used_names:
                                 used_names[base_name] += 1
@@ -824,9 +847,14 @@ def main():
                                 used_names[base_name] = 1
                                 zip_filename = f"{base_name}.docx"
                             
+                            # Sanitize zip filename
+                            zip_filename = sanitize_filename(zip_filename)
+                            
                             with open(output_path, 'rb') as f:
                                 zip_file.writestr(zip_filename, f.read())
                             
+                            # Thêm vào processed_files
+                            processed_files.append((zip_filename, output_path))
                             success_count += 1
                         else:
                             st.error(f"❌ {data['file_name']}: Lỗi khi xử lý template")
@@ -845,15 +873,41 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    st.download_button(
-                        f"📥 Tải {success_count} File Đã Điền (ZIP)",
-                        zip_buffer.getvalue(),
-                        file_name="GiayXacNhan_Batch.zip",
-                        mime="application/zip",
-                        use_container_width=True
-                    )
+                # Chỉ lấy file thành công (loại bỏ file lỗi)
+                success_files = [(name, path) for name, path in processed_files if os.path.exists(path)]
+                
+                if success_files:
+                    # Nút xuất tất cả (chỉ file thành công)
+                    st.subheader("📦 Xuất Tất Cả")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.download_button(
+                            f"📄 Tải Tất Cả DOCX ({len(success_files)} file)",
+                            zip_buffer.getvalue(),
+                            file_name="GiayXacNhan_DOCX.zip",
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+                
+                    
+                    # Tải từng file riêng lẻ (chỉ file thành công)
+                    st.subheader("📄 Tải Từng File")
+                    for i, (filename, file_path) in enumerate(success_files):
+                        if os.path.exists(file_path):  # Double check file tồn tại
+                            col1, col2, col3 = st.columns([2, 1, 1])
+                            with col1:
+                                st.text(f"✅ {filename}")
+                            with col2:
+                                with open(file_path, 'rb') as f:
+                                    st.download_button(
+                                        "📄 DOCX",
+                                        data=f.read(),
+                                        file_name=filename,
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key=f"download_docx_{i}"
+                                    )
+                        
                 
                 if error_list:
                     st.warning(f"⚠️ {len(error_list)} file có lỗi đã bị bỏ qua. Vui lòng sửa lỗi và thử lại.")
