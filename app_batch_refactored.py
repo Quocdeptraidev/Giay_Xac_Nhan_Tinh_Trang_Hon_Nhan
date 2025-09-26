@@ -26,6 +26,9 @@ import tempfile
 import os
 import zipfile
 from io import BytesIO
+import uuid
+import time
+import atexit
 
 # =============================================================================
 # CONSTANTS & CONFIGURATION
@@ -34,6 +37,30 @@ from io import BytesIO
 TEMP_DIR = tempfile.gettempdir()
 MAX_FILES = 5
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+# Session management
+SESSION_ID = str(uuid.uuid4())[:8]
+TIMESTAMP = int(time.time())
+SESSION_FILES = []
+
+def cleanup_session_files():
+    """Cleanup temporary files for current session"""
+    for file_path in SESSION_FILES:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+
+# Register cleanup on exit
+atexit.register(cleanup_session_files)
+
+def get_unique_temp_path(prefix, extension=".docx"):
+    """Generate unique temporary file path"""
+    filename = f"{prefix}_{SESSION_ID}_{TIMESTAMP}_{int(time.time() * 1000000) % 1000000}{extension}"
+    path = os.path.join(TEMP_DIR, filename)
+    SESSION_FILES.append(path)
+    return path
 
 # Danh sách từ khóa cần loại bỏ khi tìm tên người ký
 BLACKLIST_KEYWORDS = [
@@ -549,10 +576,11 @@ def render_custom_css():
 
 def render_header():
     """Render header chính"""
-    st.markdown("""
+    st.markdown(f"""
     <div class="main-header">
         <h1>🏛️ Tool Batch - Xử Lý Giấy Xác Nhận</h1>
         <p>Điền nhiều giấy xác nhận tình trạng hôn nhân cùng lúc một cách nhanh chóng và chính xác</p>
+        <small style="opacity: 0.7;">Session: {SESSION_ID}</small>
     </div>
     """, unsafe_allow_html=True)
 
@@ -560,7 +588,7 @@ def render_file_upload_section():
     """Render section upload file dữ liệu"""
     st.markdown("""
     <div class="upload-section">
-        <h3>📄 Bước 1: Upload File Dữ Liệu</h3>
+        <h3> Bước 1: Upload File Dữ Liệu</h3>
         <p>Chọn tối đa 5 file .docx chứa thông tin cần điền</p>
     </div>
     """, unsafe_allow_html=True)
@@ -579,13 +607,13 @@ def render_template_upload_section():
     st.markdown("""
     <div class="upload-section">
         <h3>📋 Template Cố Định</h3>
-        <p>🎯 Tool sử dụng template được tối ưu hóa cho giấy xác nhận tình trạng hôn nhân</p>
-        <p>✅ Không cần upload template - đã được cài đặt sẵn</p>
+        <p> Tool sử dụng template được tối ưu hóa cho giấy xác nhận tình trạng hôn nhân</p>
+        <p> Không cần upload template - đã được cài đặt sẵn</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Trả về đường dẫn template cố định
-    return "/Giay_Xac_Nhan_Tinh_Trang_Hon_Nhan/temp/mau.docx"
+    # Trả về đường dẫn template tương đối cho Streamlit Cloud
+    return "temp/mau.docx"
 
 def display_file_stats(valid_count, error_count):
     """Hiển thị thống kê file"""
@@ -609,7 +637,7 @@ def display_file_stats(valid_count, error_count):
 def display_data_details(data_list, error_list):
     """Hiển thị chi tiết dữ liệu"""
     if data_list:
-        with st.expander(f"✅ Xem chi tiết {len(data_list)} file hợp lệ", expanded=False):
+        with st.expander(f" Xem chi tiết {len(data_list)} file hợp lệ", expanded=False):
             for i, data in enumerate(data_list):
                 st.markdown(f"**📄 {data['file_name']}**")
                 
@@ -715,8 +743,8 @@ def main():
             status_text.text(f'Đang xử lý: {uploaded_file.name}')
             
             if uploaded_file.name.lower().endswith('.docx'):
-                # Tạo tên file tạm thời đơn giản
-                input_path = os.path.join(TEMP_DIR, f"input_{i}.docx")
+                # Tạo tên file tạm thời unique
+                input_path = get_unique_temp_path(f"input_{i}")
                 try:
                     with open(input_path, "wb") as f:
                         f.write(uploaded_file.getvalue())
@@ -789,7 +817,7 @@ def main():
     if data_list and template_path:
         st.markdown("""
         <div class="info-box">
-            <h3>🚀 Bước 3: Xử Lý File</h3>
+            <h3> Bước 3: Xử Lý File</h3>
             <p>Tất cả đã sẵn sàng! Nhấn nút bên dưới để bắt đầu xử lý</p>
         </div>
         """, unsafe_allow_html=True)
@@ -810,7 +838,7 @@ def main():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             process_button = st.button(
-                f"🚀 Xử Lý {len(data_list)} File Hợp Lệ", 
+                f" Xử Lý {len(data_list)} File Hợp Lệ", 
                 type="primary",
                 use_container_width=True
             )
@@ -832,7 +860,7 @@ def main():
                     status_text.text(f'Đang xử lý: {data["file_name"]}')
                     
                     try:
-                        output_path = os.path.join(TEMP_DIR, f"output_{i}.docx")
+                        output_path = get_unique_temp_path(f"output_{i}")
                         
                         if fill_template(template_path, data, output_path):
                             # Generate unique filename với sanitize
@@ -911,6 +939,12 @@ def main():
                 
                 if error_list:
                     st.warning(f"⚠️ {len(error_list)} file có lỗi đã bị bỏ qua. Vui lòng sửa lỗi và thử lại.")
+                
+                # Cleanup processed files after download
+                try:
+                    cleanup_session_files()
+                except:
+                    pass
             else:
                 st.markdown("""
                 <div class="error-box">
